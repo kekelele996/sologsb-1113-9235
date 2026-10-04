@@ -7,9 +7,13 @@ export type Priority = 'P1' | 'P2' | 'P3';
 /** 推荐滤镜 */
 export type FilterName = '无滤镜' | 'L' | 'R' | 'G' | 'B' | 'Ha' | 'OIII' | 'SII';
 
-/** 观测目标 */
+import type { OwnerRole } from './owner';
+
+/** 观测目标（归属目标协调员） */
 export interface ObsTarget {
   id: string;
+  /** 数据归属侧：目标库固定为 coordinator（目标协调员） */
+  owner: OwnerRole;
   /** 目标名（M31、NGC 7000） */
   name: string;
   /** 星表编号 */

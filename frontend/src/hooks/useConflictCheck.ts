@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useSessionStore } from '../stores/sessionStore';
 import type { ConflictItem, ObsSession } from '../types';
 import { overlapMinutes } from '../utils/astro';
+import { SCHEMA_VERSION } from './usePersistentStore';
 
 export interface ConflictCheckInput {
   nightId: string;
@@ -21,7 +22,15 @@ export interface ConflictCheckApi {
   hasConflict: (sessionId: string) => boolean;
 }
 
+/** 待重排的排程段已退出望远镜占用（排队等下一夜），不参与冲突检测 */
+function occupies(session: ObsSession): boolean {
+  return session.status !== '待重排';
+}
+
 function describe(a: ObsSession, b: ObsSession): ConflictItem | null {
+  if (!occupies(a) || !occupies(b)) {
+    return null;
+  }
   if (a.nightId !== b.nightId || a.telescopeId !== b.telescopeId || a.id === b.id) {
     return null;
   }
@@ -48,6 +57,7 @@ export function useConflictCheck(): ConflictCheckApi {
     (input: ConflictCheckInput): ConflictItem[] => {
       const candidate: ObsSession = {
         id: input.ignoreSessionId ?? '__candidate__',
+        owner: 'scheduler',
         nightId: input.nightId,
         targetId: '',
         startTime: input.startTime,
@@ -57,7 +67,7 @@ export function useConflictCheck(): ConflictCheckApi {
         filterSlot: '',
         plannedFrames: 0,
         status: '待执行',
-        schemaVersion: 2,
+        schemaVersion: SCHEMA_VERSION,
       };
       return sessions
         .filter((session) => session.id !== input.ignoreSessionId)

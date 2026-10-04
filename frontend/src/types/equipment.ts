@@ -1,12 +1,16 @@
+import type { OwnerRole } from './owner';
+
 /** 终端类型 */
 export type TerminalType = 'CMOS 相机' | '导星相机' | '光谱仪';
 
 /** 望远镜状态 */
 export type TelescopeStatus = '可用' | '维护中' | '外出';
 
-/** 望远镜 */
+/** 望远镜（归属值班排程员：望远镜占用由排程侧管理） */
 export interface Telescope {
   id: string;
+  /** 数据归属侧：编排表固定为 scheduler（值班排程员） */
+  owner: OwnerRole;
   /** 编号 */
   code: string;
   /** 口径（mm） */
@@ -23,9 +27,11 @@ export interface Telescope {
   status: TelescopeStatus;
 }
 
-/** 终端（相机 / 导星相机 / 光谱仪） */
+/** 终端（相机 / 导星相机 / 光谱仪，归属值班排程员） */
 export interface Instrument {
   id: string;
+  /** 数据归属侧：编排表固定为 scheduler（值班排程员） */
+  owner: OwnerRole;
   /** 型号 */
   model: string;
   /** 类型 */

@@ -22,7 +22,7 @@ import FieldRow from '../components/common/FieldRow';
 import { usePersistentStore } from '../hooks/usePersistentStore';
 import { useTargetStore } from '../stores/targetStore';
 import { useNightStore } from '../stores/nightStore';
-import { FILTER_NAMES, PRIORITIES, TARGET_COLOR, TARGET_TYPES, type FilterName, type ObsTarget, type Priority, type TargetType } from '../types';
+import { FILTER_NAMES, OWNER_LABEL, OWNER_SCOPE_LABEL, PRIORITIES, TARGET_COLOR, TARGET_TYPES, type FilterName, type ObsTarget, type Priority, type TargetType } from '../types';
 import { altitudeAt, formatMinutes, isBelowThreshold, moonConflict, visibilityWindow } from '../utils/astro';
 
 interface TargetFormState {
@@ -73,6 +73,7 @@ export default function TargetsPage() {
   const [form, setForm] = useState<TargetFormState>(EMPTY_FORM);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [warning, setWarning] = useState('');
 
   const night = nights.find((item) => item.id === currentNightId) ?? nights.find((item) => item.primary) ?? nights[0];
 
@@ -128,8 +129,14 @@ export default function TargetsPage() {
       return;
     }
     if (editingId) {
-      await updateTarget(editingId, form);
-      setNotice(`已更新目标 ${form.name}`);
+      const result = await updateTarget(editingId, form);
+      if (result.cascadeError) {
+        setWarning(`目标 ${form.name} 已保存，但排程侧失效标记写入失败（仅排程侧回滚，目标改动保留）：${result.cascadeError}。请通知排程员在待重排池人工核对。`);
+      } else if (result.invalidated > 0) {
+        setNotice(`已更新目标 ${form.name}，${result.invalidated} 个未开拍的引用排程段已挑入待重排池，已拍完的照旧保留`);
+      } else {
+        setNotice(`已更新目标 ${form.name}`);
+      }
     } else {
       await addTarget(form);
       setNotice(`已新增目标 ${form.name}`);
@@ -141,14 +148,21 @@ export default function TargetsPage() {
     <Box>
       <Typography variant="h5" sx={{ mb: 0.5 }}>
         观测目标库
+        <Chip size="small" color="primary" variant="outlined" label={`归属：${OWNER_LABEL.coordinator}（${OWNER_SCOPE_LABEL.coordinator}）`} sx={{ ml: 1.5, verticalAlign: 'middle' }} />
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        维护目标星表、视星等、推荐滤镜与曝光参数；地平高度阈值用于判断排程时是否标灰（评估时刻：夜间 22:00）。
+        目标协调员维护目标星表、视星等、推荐滤镜与曝光参数；高度阈值或曝光参数变更后，引用该目标且未开拍的排程段自动挑入待重排池，已拍完的照旧保留（评估时刻：夜间 22:00）。
       </Typography>
 
       {notice ? (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>
           {notice}
+        </Alert>
+      ) : null}
+
+      {warning ? (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setWarning('')}>
+          {warning}
         </Alert>
       ) : null}
 

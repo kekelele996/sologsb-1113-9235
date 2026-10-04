@@ -1,6 +1,10 @@
-/** 观测夜 */
+import type { OwnerRole } from './owner';
+
+/** 观测夜（归属值班排程员） */
 export interface ObsNight {
   id: string;
+  /** 数据归属侧：编排表固定为 scheduler（值班排程员） */
+  owner: OwnerRole;
   /** 日期 YYYY-MM-DD */
   date: string;
   /** 站点名 */

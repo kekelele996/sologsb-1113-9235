@@ -37,6 +37,8 @@ export default function OverviewPage() {
   const nightSessions = useMemo(() => sessions.filter((session) => session.nightId === night?.id), [sessions, night?.id]);
   const ids = useMemo(() => conflictIds(night?.id), [conflictIds, night?.id]);
   const conflicts = useMemo(() => conflictsOfNight(night?.id ?? ''), [conflictsOfNight, night?.id]);
+  /** 本夜待重排的排程段（目标参数变更失效或容量溢出排队） */
+  const pendingSessions = useMemo(() => nightSessions.filter((session) => session.status === '待重排'), [nightSessions]);
 
   /** 以夜间 22:00 作为高度角评估时刻 */
   const evaluateDate = useMemo(() => new Date(`${night?.date ?? '2025-10-11'}T22:00:00`), [night?.date]);
@@ -68,7 +70,7 @@ export default function OverviewPage() {
           endMinute,
           label: `${target?.name ?? '未知目标'} · ${telescopeById(session.telescopeId)?.code ?? '-'}`,
           color: target ? TARGET_COLOR[target.type] : '#607d8b',
-          dimmed: session.status === '因云取消' || Boolean(altitude?.below),
+          dimmed: session.status === '因云取消' || session.status === '待重排' || Boolean(altitude?.below),
           tooltip: `${session.startTime}-${session.endTime} ${target?.name ?? ''}｜${telescopeById(session.telescopeId)?.code ?? '-'} / ${
             instrumentById(session.instrumentId)?.model ?? '-'
           }｜${session.filterSlot}｜${session.plannedFrames} 帧｜${session.status}｜评估高度角 ${altitude?.altitude ?? '-'}°`,
@@ -118,6 +120,7 @@ export default function OverviewPage() {
         <Chip label={`值班人 ${night.dutyOfficer}`} size="small" />
         <Chip label={`月相 ${night.moonPhasePct}%（${moonPhaseText(night.moonPhasePct)}）· 亮度折算 ${moonBrightnessFactor(night.moonPhasePct)}`} size="small" color="primary" variant="outlined" />
         <ConflictBadge conflicts={conflicts} />
+        {pendingSessions.length > 0 ? <Chip label={`待重排 ${pendingSessions.length} 段`} size="small" color="warning" /> : null}
       </Stack>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2, mb: 2 }}>
@@ -182,6 +185,17 @@ export default function OverviewPage() {
               </div>
             ) : null;
           })}
+        </Alert>
+      ) : null}
+
+      {pendingSessions.length > 0 ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <AlertTitle>{pendingSessions.length} 个排程段待重排，已退出本夜望远镜占用</AlertTitle>
+          {pendingSessions.map((session) => (
+            <div key={session.id}>
+              {targetById(session.targetId)?.name ?? session.targetId}（{session.startTime}-{session.endTime}）：{session.invalidReason ?? '待排程员重排'}
+            </div>
+          ))}
         </Alert>
       ) : null}
 
@@ -263,6 +277,11 @@ export default function OverviewPage() {
                       {ids.has(session.id) ? <Chip size="small" color="error" label="时段冲突" /> : null}
                       {altitude?.below ? <Chip size="small" color="warning" label={`高度角 ${altitude.altitude}° 低于阈值 ${target?.minAltitude}°`} /> : <Chip size="small" color="success" variant="outlined" label={`高度角 ${altitude?.altitude ?? '-'}°`} />}
                       {session.rescheduleReason ? <Typography variant="caption" color="text.secondary">{session.rescheduleReason}</Typography> : null}
+                      {session.invalidReason ? (
+                        <Typography variant="caption" color="warning.main">
+                          {session.invalidReason}
+                        </Typography>
+                      ) : null}
                     </Stack>
                   </CardContent>
                 </Card>

@@ -1,9 +1,13 @@
-/** 排程段状态 */
-export type SessionStatus = '待执行' | '进行中' | '已完成' | '因云取消';
+import type { OwnerRole } from './owner';
 
-/** 观测排程段 */
+/** 排程段状态（待重排：目标参数变更失效或容量溢出排队，等待排程员重排） */
+export type SessionStatus = '待执行' | '进行中' | '已完成' | '因云取消' | '待重排';
+
+/** 观测排程段（归属值班排程员） */
 export interface ObsSession {
   id: string;
+  /** 数据归属侧：编排表固定为 scheduler（值班排程员） */
+  owner: OwnerRole;
   /** 观测夜 ID */
   nightId: string;
   /** 观测目标 ID */
@@ -24,6 +28,8 @@ export interface ObsSession {
   status: SessionStatus;
   /** 改期原因 */
   rescheduleReason?: string;
+  /** 失效原因：目标阈值/曝光参数变更或容量溢出被挑入待重排时记录 */
+  invalidReason?: string;
   /** 替补夜 ID（迁移时补齐） */
   backupNightId?: string;
   /** 数据结构版本 */
@@ -44,12 +50,13 @@ export interface ConflictItem {
   overlapText: string;
 }
 
-export const SESSION_STATUSES: SessionStatus[] = ['待执行', '进行中', '已完成', '因云取消'];
+export const SESSION_STATUSES: SessionStatus[] = ['待执行', '进行中', '已完成', '因云取消', '待重排'];
 
-/** 4 种状态配色（MUI Chip color） */
-export const STATUS_CHIP_COLOR: Record<SessionStatus, 'default' | 'primary' | 'success' | 'error'> = {
+/** 5 种状态配色（MUI Chip color） */
+export const STATUS_CHIP_COLOR: Record<SessionStatus, 'default' | 'primary' | 'success' | 'error' | 'warning'> = {
   待执行: 'default',
   进行中: 'primary',
   已完成: 'success',
   因云取消: 'error',
+  待重排: 'warning',
 };

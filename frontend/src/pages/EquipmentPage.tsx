@@ -25,6 +25,7 @@ import { useTargetStore } from '../stores/targetStore';
 import { useEquipmentStore } from '../stores/equipmentStore';
 import { NIGHT_TOTAL_MINUTES, TARGET_COLOR } from '../types';
 import { axisMinutes, minutesToTime } from '../utils/astro';
+import { nightCapacityMinutes, occupiedMinutes } from '../utils/capacity';
 
 const SLOT_MINUTES = 30;
 
@@ -52,12 +53,12 @@ export default function EquipmentPage() {
   const targetById = (id: string) => targets.find((target) => target.id === id);
   const pairedInstrument = (telescopeCode: string) => instruments.find((instrument) => instrument.telescopeCode === telescopeCode);
 
-  /** 某望远镜在某时段内的排程段 */
+  /** 某望远镜在某时段内的排程段（待重排的段已退出占用，不占用格子） */
   const occupancy = (telescopeId: string, slot: number) => {
     const slotStart = slot * SLOT_MINUTES;
     const slotEnd = slotStart + SLOT_MINUTES;
     return nightSessions
-      .filter((session) => session.telescopeId === telescopeId)
+      .filter((session) => session.telescopeId === telescopeId && session.status !== '待重排')
       .filter((session) => {
         const start = axisMinutes(session.startTime);
         const rawEnd = axisMinutes(session.endTime);
@@ -125,6 +126,8 @@ export default function EquipmentPage() {
             {telescopes.map((telescope) => {
               const instrument = pairedInstrument(telescope.code);
               const fov = instrument ? fieldOfView(telescope.id, instrument.id) : undefined;
+              const capacity = nightCapacityMinutes(night);
+              const used = occupiedMinutes(sessions, activeNightId, telescope.id);
               return (
                 <TableRow key={telescope.id}>
                   <TableCell>
@@ -146,6 +149,9 @@ export default function EquipmentPage() {
                       <Typography variant="caption" color="text.secondary">
                         {instrument ? `${instrument.model}（${instrument.terminalType}）` : '未配终端'}
                         {fov ? ` · 视场 ${fov.text}` : ''}
+                      </Typography>
+                      <Typography variant="caption" color={used >= capacity ? 'warning.main' : 'text.secondary'}>
+                        当夜容量已占 {used}/{capacity} 分钟{used >= capacity ? '（已满，新段将排队等下一夜）' : ''}
                       </Typography>
                     </Stack>
                   </TableCell>

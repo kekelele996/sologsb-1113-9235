@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, deleteRow, persistRow } from '../hooks/usePersistentStore';
+import { db, deleteSideRow, persistSideRow, runSideTransaction } from '../hooks/usePersistentStore';
 import { uid } from '../utils/id';
 import type { ObsNight } from '../types';
 
@@ -31,7 +31,7 @@ interface NightState {
   removeNight: (id: string) => Promise<void>;
 }
 
-/** 观测夜与主夜 / 备用夜 */
+/** 观测夜与主夜 / 备用夜（归属值班排程员） */
 export const useNightStore = create<NightState>()((set, get) => ({
   nights: [],
   currentNightId: '',
@@ -48,6 +48,7 @@ export const useNightStore = create<NightState>()((set, get) => ({
   addNight: async (input) => {
     const night: ObsNight = {
       id: uid('night'),
+      owner: 'scheduler',
       date: input.date,
       siteName: input.siteName.trim(),
       siteLat: Number(input.siteLat) || 0,
@@ -63,7 +64,7 @@ export const useNightStore = create<NightState>()((set, get) => ({
       dutyOfficer: input.dutyOfficer.trim(),
       remark: input.remark?.trim() || undefined,
     };
-    await persistRow('nights', night);
+    await runSideTransaction('scheduler', () => persistSideRow('scheduler', 'nights', night));
     set({ nights: [...get().nights, night].sort((a, b) => a.date.localeCompare(b.date)) });
     return night;
   },
@@ -71,13 +72,13 @@ export const useNightStore = create<NightState>()((set, get) => ({
   updateNight: async (id, patch) => {
     const current = get().nights.find((night) => night.id === id);
     if (!current) return;
-    const next: ObsNight = { ...current, ...patch };
-    await persistRow('nights', next);
+    const next: ObsNight = { ...current, ...patch, owner: 'scheduler' };
+    await runSideTransaction('scheduler', () => persistSideRow('scheduler', 'nights', next));
     set({ nights: get().nights.map((night) => (night.id === id ? next : night)) });
   },
 
   removeNight: async (id) => {
-    await deleteRow('nights', id);
+    await deleteSideRow('scheduler', 'nights', id);
     set({ nights: get().nights.filter((night) => night.id !== id) });
   },
 }));

@@ -29,8 +29,9 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useNightStore } from '../stores/nightStore';
 import { useTargetStore } from '../stores/targetStore';
 import { useEquipmentStore } from '../stores/equipmentStore';
-import { FILTER_NAMES, SESSION_STATUSES, type SessionStatus } from '../types';
+import { FILTER_NAMES, OWNER_LABEL, OWNER_SCOPE_LABEL, SESSION_STATUSES, type ObsSession, type SessionStatus } from '../types';
 import { axisMinutes, durationMinutes, formatMinutes } from '../utils/astro';
+import { nightCapacityMinutes, occupiedMinutes, QUEUE_CHECK_STATUSES } from '../utils/capacity';
 
 interface SessionFormState {
   nightId: string;
@@ -71,6 +72,7 @@ export default function SessionsPage() {
   const [editingId, setEditingId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [warning, setWarning] = useState('');
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleNight, setRescheduleNight] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
@@ -89,6 +91,8 @@ export default function SessionsPage() {
 
   const conflictSet = useMemo(() => conflictIds(), [conflictIds]);
   const backupNights = useMemo(() => nights.filter((night) => night.backup), [nights]);
+  /** 待重排池：目标参数变更失效或容量溢出排队的排程段 */
+  const pendingPool = useMemo(() => sessions.filter((session) => session.status === '待重排'), [sessions]);
 
   const visible = useMemo(() => {
     return [...sessions]
@@ -116,6 +120,19 @@ export default function SessionsPage() {
       ignoreSessionId: editingId || undefined,
     });
   }, [dialogOpen, findConflicts, form.nightId, form.telescopeId, form.startTime, form.endTime, editingId]);
+
+  /** 当夜该望远镜的容量占用（日落→日出落在时间轴内的分钟数） */
+  const capacityInfo = useMemo(() => {
+    if (!dialogOpen || !form.nightId || !form.telescopeId) return null;
+    const night = nights.find((item) => item.id === form.nightId);
+    const capacity = nightCapacityMinutes(night);
+    const used = occupiedMinutes(sessions, form.nightId, form.telescopeId, editingId || undefined);
+    const duration = durationMinutes(form.startTime, form.endTime);
+    return { capacity, used, duration, remaining: capacity - used };
+  }, [dialogOpen, form.nightId, form.telescopeId, form.startTime, form.endTime, nights, sessions, editingId]);
+
+  /** 正在编辑的排程段（用于展示失效原因） */
+  const editingSession = editingId ? sessions.find((session) => session.id === editingId) : undefined;
 
   function openCreate() {
     setEditingId('');
@@ -152,10 +169,20 @@ export default function SessionsPage() {
       instrumentId: session.instrumentId,
       filterSlot: session.filterSlot,
       plannedFrames: session.plannedFrames,
-      status: session.status,
+      // 待重排的段打开即预备重新确认，保存时重新做容量检查
+      status: session.status === '待重排' ? '待执行' : session.status,
       rescheduleReason: session.rescheduleReason ?? '',
     });
     setDialogOpen(true);
+  }
+
+  /** 保存结果反馈：容量溢出被挑入待重排时给出警告而不是成功提示 */
+  function notifySaved(saved: ObsSession | undefined, prefix: string) {
+    if (saved?.status === '待重排' && saved.invalidReason) {
+      setWarning(`${prefix}，但${saved.invalidReason}，已挑入待重排池`);
+    } else {
+      setNotice(prefix);
+    }
   }
 
   async function submit() {
@@ -172,11 +199,11 @@ export default function SessionsPage() {
       return;
     }
     if (editingId) {
-      await updateSession(editingId, { ...form, rescheduleReason: form.rescheduleReason });
-      setNotice('已更新排程段');
+      const saved = await updateSession(editingId, { ...form, rescheduleReason: form.rescheduleReason });
+      notifySaved(saved, '已更新排程段');
     } else {
-      await addSession({ ...form, rescheduleReason: form.rescheduleReason });
-      setNotice('已新增排程段');
+      const saved = await addSession({ ...form, rescheduleReason: form.rescheduleReason });
+      notifySaved(saved, '已新增排程段');
     }
     setDialogOpen(false);
   }
@@ -197,14 +224,21 @@ export default function SessionsPage() {
     <Box>
       <Typography variant="h5" sx={{ mb: 0.5 }}>
         排程段列表与冲突检测
+        <Chip size="small" color="secondary" variant="outlined" label={`归属：${OWNER_LABEL.scheduler}（${OWNER_SCOPE_LABEL.scheduler}）`} sx={{ ml: 1.5, verticalAlign: 'middle' }} />
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        同一时段同一望远镜重复排入即进入冲突列表；支持勾选多个排程段批量改期到备用观测夜并填写改期原因。
+        值班排程员维护观测夜、排程段与望远镜占用；同一夜同一望远镜已确认排程合计超出当夜容量时，新段自动排队等下一夜（转入待重排），不挤掉已确认的段。
       </Typography>
 
       {notice ? (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>
           {notice}
+        </Alert>
+      ) : null}
+
+      {warning ? (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setWarning('')}>
+          {warning}
         </Alert>
       ) : null}
 
@@ -238,6 +272,13 @@ export default function SessionsPage() {
         <Button variant={onlyConflict ? 'contained' : 'outlined'} color="error" onClick={() => setOnlyConflict((value) => !value)}>
           仅看冲突（{conflictSet.size} 段）
         </Button>
+        <Button
+          variant={statusFilter === '待重排' ? 'contained' : 'outlined'}
+          color="warning"
+          onClick={() => setStatusFilter((value) => (value === '待重排' ? '全部' : '待重排'))}
+        >
+          待重排池（{pendingPool.length}）
+        </Button>
         <Chip size="small" label={`命中 ${visible.length} / ${sessions.length}`} />
       </Stack>
 
@@ -260,7 +301,7 @@ export default function SessionsPage() {
               <TableCell align="right">帧数</TableCell>
               <TableCell>状态</TableCell>
               <TableCell>冲突</TableCell>
-              <TableCell>改期原因</TableCell>
+              <TableCell>改期 / 失效原因</TableCell>
               <TableCell align="right">操作</TableCell>
             </TableRow>
           </TableHead>
@@ -309,12 +350,19 @@ export default function SessionsPage() {
                     <ConflictBadge conflicts={conflicts} compact />
                   </TableCell>
                   <TableCell>
+                    {session.invalidReason ? (
+                      <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                        {session.invalidReason}
+                      </Typography>
+                    ) : null}
                     {session.rescheduleReason ? (
                       <Typography variant="caption">{session.rescheduleReason}</Typography>
                     ) : (
-                      <Typography variant="caption" color="text.secondary">
-                        -
-                      </Typography>
+                      !session.invalidReason && (
+                        <Typography variant="caption" color="text.secondary">
+                          -
+                        </Typography>
+                      )
                     )}
                     {session.backupNightId ? (
                       <Chip size="small" variant="outlined" label={`替补 ${nightById(session.backupNightId)?.date ?? session.backupNightId}`} sx={{ ml: 0.5 }} />
@@ -343,6 +391,11 @@ export default function SessionsPage() {
               {error}
             </Alert>
           ) : null}
+          {editingSession?.invalidReason ? (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              失效原因：{editingSession.invalidReason}。调整观测夜 / 时段 / 望远镜后以「待执行」保存即可重新确认，保存时重新校验容量。
+            </Alert>
+          ) : null}
           {liveConflicts.length > 0 ? (
             <Alert severity="warning" sx={{ mb: 1.5 }}>
               该望远镜在所选时段已有 {liveConflicts.length} 段排程：
@@ -353,6 +406,12 @@ export default function SessionsPage() {
               时段校验通过，该望远镜此时段空闲
             </Alert>
           )}
+          {capacityInfo && QUEUE_CHECK_STATUSES.includes(form.status) ? (
+            <Alert severity={capacityInfo.duration > capacityInfo.remaining ? 'warning' : 'info'} sx={{ mb: 1.5 }}>
+              当夜该望远镜容量 {capacityInfo.capacity} 分钟，已确认占用 {capacityInfo.used} 分钟，剩余 {capacityInfo.remaining} 分钟；本段 {capacityInfo.duration} 分钟
+              {capacityInfo.duration > capacityInfo.remaining ? '，超出容量将排队等下一夜（转入待重排，不挤掉已确认的段）' : '，容量充足'}
+            </Alert>
+          ) : null}
           <FieldRow label="观测夜" required>
             <TextField select size="small" fullWidth value={form.nightId} onChange={(event) => setForm({ ...form, nightId: event.target.value })}>
               {nights.map((night) => (

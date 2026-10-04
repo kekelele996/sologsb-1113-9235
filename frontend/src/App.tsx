@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -14,7 +14,7 @@ import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 import { buildNightPlanText, downloadText } from './utils/export';
-import { usePersistentStore } from './hooks/usePersistentStore';
+import { isDomainSplitEnabled, usePersistentStore } from './hooks/usePersistentStore';
 import { useNightStore } from './stores/nightStore';
 import { useSessionStore } from './stores/sessionStore';
 import { useTargetStore } from './stores/targetStore';
@@ -41,6 +41,11 @@ export default function App() {
   const telescopes = useEquipmentStore((s) => s.telescopes);
   const instruments = useEquipmentStore((s) => s.instruments);
   const [toast, setToast] = useState(false);
+  const [splitEnabled, setSplitEnabled] = useState(false);
+
+  useEffect(() => {
+    if (ready) void isDomainSplitEnabled().then(setSplitEnabled);
+  }, [ready]);
 
   const night = nights.find((item) => item.id === currentNightId) ?? nights[0];
 
@@ -65,6 +70,9 @@ export default function App() {
             天文观测计划编排台
           </Typography>
           <Chip size="small" sx={{ mr: 1.5, color: '#fff', borderColor: 'rgba(255,255,255,.6)' }} variant="outlined" label={night ? `当前观测夜 ${night.date}` : '未选择观测夜'} />
+          {splitEnabled ? (
+            <Chip size="small" sx={{ mr: 1.5, color: '#fff', borderColor: 'rgba(255,255,255,.6)' }} variant="outlined" label="目标库 / 编排表分侧已启用" />
+          ) : null}
           <Button color="inherit" onClick={quickExport}>
             快捷导出
           </Button>
@@ -124,7 +132,7 @@ export default function App() {
         )}
         <Box sx={{ mt: 4, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary">
-            数据保存在浏览器 IndexedDB（gbobsplan-db），不使用数据库服务、不挂载命名卷
+            数据保存在浏览器 IndexedDB（gbobsplan-db）：目标库归目标协调员、编排表归值班排程员，分侧写入互不影响；不使用数据库服务、不挂载命名卷
           </Typography>
         </Box>
       </Box>
