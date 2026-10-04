@@ -1,5 +1,5 @@
 /** 排程段状态 */
-export type SessionStatus = '待执行' | '进行中' | '已完成' | '因云取消';
+export type SessionStatus = '待执行' | '进行中' | '已完成' | '因云取消' | '待重排';
 
 /** 观测排程段 */
 export interface ObsSession {
@@ -44,12 +44,13 @@ export interface ConflictItem {
   overlapText: string;
 }
 
-export const SESSION_STATUSES: SessionStatus[] = ['待执行', '进行中', '已完成', '因云取消'];
+export const SESSION_STATUSES: SessionStatus[] = ['待执行', '进行中', '已完成', '因云取消', '待重排'];
 
-/** 4 种状态配色（MUI Chip color） */
-export const STATUS_CHIP_COLOR: Record<SessionStatus, 'default' | 'primary' | 'success' | 'error'> = {
+/** 5 种状态配色（MUI Chip color） */
+export const STATUS_CHIP_COLOR: Record<SessionStatus, 'default' | 'primary' | 'success' | 'error' | 'warning'> = {
   待执行: 'default',
   进行中: 'primary',
   已完成: 'success',
   因云取消: 'error',
+  待重排: 'warning',
 };

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, deleteRow, persistRow } from '../hooks/usePersistentStore';
+import { deleteRow, persistRow, scheduleDb } from '../db/scheduleDb';
 import { uid } from '../utils/id';
 import type { FieldOfView, Instrument, Telescope, TelescopeStatus, TerminalType } from '../types';
 
@@ -40,14 +40,17 @@ interface EquipmentState {
 
 const RAD = Math.PI / 180;
 
-/** 望远镜与终端分配（含视场角换算） */
+/** 望远镜与终端分配（含视场角换算，排程员侧）：仅写入 schedule-db，改不到协调员的目标库 */
 export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
   telescopes: [],
   instruments: [],
   hydrated: false,
 
   hydrate: async () => {
-    const [telescopes, instruments] = await Promise.all([db.telescopes.orderBy('code').toArray(), db.instruments.toArray()]);
+    const [telescopes, instruments] = await Promise.all([
+      scheduleDb.telescopes.orderBy('code').toArray(),
+      scheduleDb.instruments.toArray(),
+    ]);
     set({ telescopes, instruments, hydrated: true });
   },
 
@@ -62,7 +65,9 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
       maxPayloadKg: Number(input.maxPayloadKg) || 0,
       status: input.status,
     };
-    await persistRow('telescopes', telescope);
+    await scheduleDb.transaction('rw', scheduleDb.telescopes, async () => {
+      await persistRow('telescopes', telescope);
+    });
     set({ telescopes: [...get().telescopes, telescope].sort((a, b) => a.code.localeCompare(b.code)) });
     return telescope;
   },
@@ -71,12 +76,16 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
     const current = get().telescopes.find((telescope) => telescope.id === id);
     if (!current) return;
     const next: Telescope = { ...current, ...patch };
-    await persistRow('telescopes', next);
+    await scheduleDb.transaction('rw', scheduleDb.telescopes, async () => {
+      await persistRow('telescopes', next);
+    });
     set({ telescopes: get().telescopes.map((telescope) => (telescope.id === id ? next : telescope)) });
   },
 
   removeTelescope: async (id) => {
-    await deleteRow('telescopes', id);
+    await scheduleDb.transaction('rw', scheduleDb.telescopes, async () => {
+      await deleteRow('telescopes', id);
+    });
     set({ telescopes: get().telescopes.filter((telescope) => telescope.id !== id) });
   },
 
@@ -91,7 +100,9 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
       readNoiseE: Number(input.readNoiseE) || 0,
       telescopeCode: input.telescopeCode,
     };
-    await persistRow('instruments', instrument);
+    await scheduleDb.transaction('rw', scheduleDb.instruments, async () => {
+      await persistRow('instruments', instrument);
+    });
     set({ instruments: [...get().instruments, instrument] });
     return instrument;
   },
@@ -100,12 +111,16 @@ export const useEquipmentStore = create<EquipmentState>()((set, get) => ({
     const current = get().instruments.find((instrument) => instrument.id === id);
     if (!current) return;
     const next: Instrument = { ...current, ...patch };
-    await persistRow('instruments', next);
+    await scheduleDb.transaction('rw', scheduleDb.instruments, async () => {
+      await persistRow('instruments', next);
+    });
     set({ instruments: get().instruments.map((instrument) => (instrument.id === id ? next : instrument)) });
   },
 
   removeInstrument: async (id) => {
-    await deleteRow('instruments', id);
+    await scheduleDb.transaction('rw', scheduleDb.instruments, async () => {
+      await deleteRow('instruments', id);
+    });
     set({ instruments: get().instruments.filter((instrument) => instrument.id !== id) });
   },
 

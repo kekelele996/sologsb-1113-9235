@@ -37,9 +37,14 @@ export function altitudeAt(
 
 /** 'HH:mm' → 该夜时间轴刻度（18:00 起算的分钟数，跨零点自动 +1440） */
 export function axisMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map((v) => Number(v) || 0);
-  const clock = h * 60 + m;
+  const clock = hhmmToClock(hhmm);
   return clock >= NIGHT_START_MINUTES ? clock - NIGHT_START_MINUTES : clock + (1440 - NIGHT_START_MINUTES);
+}
+
+/** 'HH:mm' → 当日分钟数（0~1440），用于日落到日出的容量 / 窗口计算 */
+export function hhmmToClock(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map((v) => Number(v) || 0);
+  return h * 60 + m;
 }
 
 /** 时间轴刻度 → 'HH:mm' */
@@ -94,8 +99,11 @@ export interface VisibilityWindow {
  */
 export function visibilityWindow(target: ObsTarget, night: ObsNight, stepMinutes = 10): VisibilityWindow | null {
   const base = new Date(`${night.date}T18:00:00`);
-  const from = axisMinutes(night.sunset);
-  const to = axisMinutes(night.sunrise) || NIGHT_TOTAL_MINUTES;
+  // 日落在 18:00 前后：相对 18:00 起算的时间轴，日落可能略负（取 0），日出在次日（时钟分钟 +360）
+  const sunsetClock = hhmmToClock(night.sunset);
+  const sunriseClock = hhmmToClock(night.sunrise);
+  const from = Math.max(0, sunsetClock - NIGHT_START_MINUTES);
+  const to = sunriseClock < NIGHT_START_MINUTES ? sunriseClock + (1440 - NIGHT_START_MINUTES) : sunriseClock - NIGHT_START_MINUTES;
   const samples: Array<{ axis: number; altitude: number }> = [];
   for (let axis = from; axis <= to; axis += stepMinutes) {
     const date = new Date(base.getTime() + axis * 60_000);

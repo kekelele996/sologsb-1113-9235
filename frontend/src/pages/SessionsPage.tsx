@@ -66,6 +66,7 @@ export default function SessionsPage() {
   const [nightFilter, setNightFilter] = useState(nightParam || '全部');
   const [statusFilter, setStatusFilter] = useState('全部');
   const [onlyConflict, setOnlyConflict] = useState(false);
+  const [onlyPending, setOnlyPending] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState('');
@@ -96,10 +97,13 @@ export default function SessionsPage() {
         if (nightFilter !== '全部' && session.nightId !== nightFilter) return false;
         if (statusFilter !== '全部' && session.status !== statusFilter) return false;
         if (onlyConflict && !conflictSet.has(session.id)) return false;
+        if (onlyPending && session.status !== '待重排') return false;
         return true;
       })
       .sort((a, b) => a.nightId.localeCompare(b.nightId) || axisMinutes(a.startTime) - axisMinutes(b.startTime));
-  }, [sessions, nightFilter, statusFilter, onlyConflict, conflictSet]);
+  }, [sessions, nightFilter, statusFilter, onlyConflict, onlyPending, conflictSet]);
+
+  const pendingCount = useMemo(() => sessions.filter((session) => session.status === '待重排').length, [sessions]);
 
   const targetById = (id: string) => targets.find((target) => target.id === id);
   const telescopeById = (id: string) => telescopes.find((item) => item.id === id);
@@ -175,8 +179,16 @@ export default function SessionsPage() {
       await updateSession(editingId, { ...form, rescheduleReason: form.rescheduleReason });
       setNotice('已更新排程段');
     } else {
-      await addSession({ ...form, rescheduleReason: form.rescheduleReason });
-      setNotice('已新增排程段');
+      const created = await addSession({ ...form, rescheduleReason: form.rescheduleReason });
+      if (created.nightId !== form.nightId) {
+        setNotice(
+          `已新增排程段，但该望远镜在 ${nightById(form.nightId)?.date ?? form.nightId} 的容量已排满，已排队到 ${
+            nightById(created.nightId)?.date ?? created.nightId
+          }（待重排），请确认`,
+        );
+      } else {
+        setNotice('已新增排程段');
+      }
     }
     setDialogOpen(false);
   }
@@ -237,6 +249,9 @@ export default function SessionsPage() {
         </TextField>
         <Button variant={onlyConflict ? 'contained' : 'outlined'} color="error" onClick={() => setOnlyConflict((value) => !value)}>
           仅看冲突（{conflictSet.size} 段）
+        </Button>
+        <Button variant={onlyPending ? 'contained' : 'outlined'} color="warning" onClick={() => setOnlyPending((value) => !value)}>
+          仅看待重排（{pendingCount} 段）
         </Button>
         <Chip size="small" label={`命中 ${visible.length} / ${sessions.length}`} />
       </Stack>
@@ -321,12 +336,23 @@ export default function SessionsPage() {
                     ) : null}
                   </TableCell>
                   <TableCell align="right">
-                    <Button size="small" onClick={() => openEdit(session.id)}>
-                      编辑
-                    </Button>
-                    <Button size="small" color="error" onClick={() => void removeSession(session.id)}>
-                      删除
-                    </Button>
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      {session.status === '待重排' ? (
+                        <Button
+                          size="small"
+                          color="warning"
+                          onClick={() => void updateSession(session.id, { status: '待执行', rescheduleReason: '' })}
+                        >
+                          确认排程
+                        </Button>
+                      ) : null}
+                      <Button size="small" onClick={() => openEdit(session.id)}>
+                        编辑
+                      </Button>
+                      <Button size="small" color="error" onClick={() => void removeSession(session.id)}>
+                        删除
+                      </Button>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               );

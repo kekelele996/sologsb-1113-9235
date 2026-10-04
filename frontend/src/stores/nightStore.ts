@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, deleteRow, persistRow } from '../hooks/usePersistentStore';
+import { deleteRow, persistRow, scheduleDb } from '../db/scheduleDb';
 import { uid } from '../utils/id';
 import type { ObsNight } from '../types';
 
@@ -31,14 +31,14 @@ interface NightState {
   removeNight: (id: string) => Promise<void>;
 }
 
-/** 观测夜与主夜 / 备用夜 */
+/** 观测夜与主夜 / 备用夜（排程员侧）：仅写入 schedule-db，改不到协调员的目标库 */
 export const useNightStore = create<NightState>()((set, get) => ({
   nights: [],
   currentNightId: '',
   hydrated: false,
 
   hydrate: async () => {
-    const nights = await db.nights.orderBy('date').toArray();
+    const nights = await scheduleDb.nights.orderBy('date').toArray();
     const current = get().currentNightId || nights.find((night) => night.primary)?.id || nights[0]?.id || '';
     set({ nights, currentNightId: current, hydrated: true });
   },
@@ -63,7 +63,9 @@ export const useNightStore = create<NightState>()((set, get) => ({
       dutyOfficer: input.dutyOfficer.trim(),
       remark: input.remark?.trim() || undefined,
     };
-    await persistRow('nights', night);
+    await scheduleDb.transaction('rw', scheduleDb.nights, async () => {
+      await persistRow('nights', night);
+    });
     set({ nights: [...get().nights, night].sort((a, b) => a.date.localeCompare(b.date)) });
     return night;
   },
@@ -72,12 +74,16 @@ export const useNightStore = create<NightState>()((set, get) => ({
     const current = get().nights.find((night) => night.id === id);
     if (!current) return;
     const next: ObsNight = { ...current, ...patch };
-    await persistRow('nights', next);
+    await scheduleDb.transaction('rw', scheduleDb.nights, async () => {
+      await persistRow('nights', next);
+    });
     set({ nights: get().nights.map((night) => (night.id === id ? next : night)) });
   },
 
   removeNight: async (id) => {
-    await deleteRow('nights', id);
+    await scheduleDb.transaction('rw', scheduleDb.nights, async () => {
+      await deleteRow('nights', id);
+    });
     set({ nights: get().nights.filter((night) => night.id !== id) });
   },
 }));

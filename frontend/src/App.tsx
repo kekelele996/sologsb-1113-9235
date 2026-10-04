@@ -124,7 +124,7 @@ export default function App() {
         )}
         <Box sx={{ mt: 4, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary">
-            数据保存在浏览器 IndexedDB（gbobsplan-db），不使用数据库服务、不挂载命名卷
+            数据保存在浏览器 IndexedDB，目标库（gbobsplan-target-db）与编排库（gbobsplan-schedule-db）物理隔离、各写各的，不使用数据库服务、不挂载命名卷
           </Typography>
         </Box>
       </Box>

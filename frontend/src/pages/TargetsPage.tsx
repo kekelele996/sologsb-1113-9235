@@ -128,8 +128,12 @@ export default function TargetsPage() {
       return;
     }
     if (editingId) {
-      await updateTarget(editingId, form);
-      setNotice(`已更新目标 ${form.name}`);
+      const invalidated = await updateTarget(editingId, form);
+      setNotice(
+        invalidated > 0
+          ? `已更新目标 ${form.name}；高度阈值调整导致 ${invalidated} 段待执行排程段失效，已转入「待重排」等排程员处理`
+          : `已更新目标 ${form.name}`,
+      );
     } else {
       await addTarget(form);
       setNotice(`已新增目标 ${form.name}`);
